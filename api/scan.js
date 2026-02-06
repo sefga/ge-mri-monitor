@@ -1,5 +1,5 @@
 const puppeteer = require('puppeteer-core');
-const chromium = require('@sparticuz/chromium-min');
+const chromium = require('@sparticuz/chromium');
 const cheerio = require('cheerio');
 
 // Mapping based on MagMon source code
@@ -28,7 +28,6 @@ module.exports = async (req, res) => {
 
     // Normalize URL
     const baseUrl = ip.startsWith('http') ? ip : `http://${ip}`;
-    // Remove trailing slash if present
     const rootUrl = baseUrl.replace(/\/$/, '');
     
     let browser = null;
@@ -36,25 +35,31 @@ module.exports = async (req, res) => {
     try {
         console.log(`Connecting to: ${rootUrl}`);
         
+        // Use full Chromium package which includes necessary libs
+        // Note: executablePath URL is often not needed for @sparticuz/chromium if local install is correct,
+        // but we keep it empty to let the lib resolve it or download if needed.
+        // Actually, for Vercel, we often don't need to specify executablePath if using the package's helper.
+        // But let's try the standard way first.
+        
         browser = await puppeteer.launch({
             args: chromium.args,
             defaultViewport: chromium.defaultViewport,
-            executablePath: await chromium.executablePath(
-                "https://github.com/Sparticuz/chromium/releases/download/v121.0.0/chromium-v121.0.0-pack.tar"
-            ),
+            executablePath: await chromium.executablePath(),
             headless: chromium.headless,
             ignoreHTTPSErrors: true,
         });
 
         const page = await browser.newPage();
-        // Increased timeout for multi-step process
         page.setDefaultNavigationTimeout(15000); 
 
         // 1. LOGIN
         console.log('Step 1: Login');
-        await page.goto(`${rootUrl}/index.html`, { waitUntil: 'domcontentloaded' });
+        try {
+            await page.goto(`${rootUrl}/index.html`, { waitUntil: 'domcontentloaded' });
+        } catch (e) {
+            throw new Error(`Failed to load ${rootUrl}: ${e.message}`);
+        }
         
-        // Handle login form if present
         const loginForm = await page.$('form[name="login"]');
         if (loginForm) {
             console.log('Login form found, authenticating...');
@@ -63,19 +68,16 @@ module.exports = async (req, res) => {
             
             await Promise.all([
                 page.click('input[value="Submit"]'),
-                page.waitForNavigation({ waitUntil: 'domcontentloaded' }).catch(e => console.log('Navigation timeout/error handled'))
+                page.waitForNavigation({ waitUntil: 'domcontentloaded' }).catch(() => {})
             ]);
-        } else {
-            console.log('No login form found, assuming already logged in or basic auth not required.');
         }
 
-        // 2. SCRAPE DATA (Multi-page)
+        // 2. SCRAPE DATA
         const results = {
             timestamp: new Date().toISOString(),
             parameters: []
         };
 
-        // Helper to scrape a page
         const scrapePage = async (path) => {
             const url = `${rootUrl}/${path}`;
             console.log(`Scraping: ${url}`);
@@ -84,21 +86,12 @@ module.exports = async (req, res) => {
                 const content = await page.content();
                 const $ = cheerio.load(content);
                 
-                // MagMon looks for input fields named ChXX in form 'curVal'
                 $('input').each((i, el) => {
                     const name = $(el).attr('name');
                     const value = $(el).val();
-                    
-                    if (name && name.startsWith('Ch')) {
+                    if (name && name.startsWith('Ch') && value && value.trim() !== '') {
                         const label = PARAM_MAP[name] || name;
-                        // Only add if it has a value and is mapped (or we want raw data)
-                        if (value && value.trim() !== '') {
-                            results.parameters.push({
-                                id: name,
-                                name: label,
-                                value: value.trim()
-                            });
-                        }
+                        results.parameters.push({ id: name, name: label, value: value.trim() });
                     }
                 });
             } catch (e) {
@@ -106,21 +99,13 @@ module.exports = async (req, res) => {
             }
         };
 
-        // Scrape coldhead.html
         await scrapePage('coldhead.html');
-        
-        // Scrape cur_a_vals.html
         await scrapePage('cur_a_vals.html');
 
-        // Screenshot of the last state (likely cur_a_vals)
         const screenshotBuffer = await page.screenshot({ encoding: 'base64' });
         const screenshotDataUrl = `data:image/png;base64,${screenshotBuffer}`;
 
-        res.status(200).json({ 
-            success: true, 
-            data: results, 
-            screenshot: screenshotDataUrl 
-        });
+        res.status(200).json({ success: true, data: results, screenshot: screenshotDataUrl });
 
     } catch (error) {
         console.error('Critical error:', error);
