@@ -1,0 +1,82 @@
+<!DOCTYPE html>
+<html lang="ru">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>GE MRI Magnet Monitor</title>
+    <style>
+        body { font-family: sans-serif; background: #1a1a1a; color: #eee; padding: 20px; }
+        .container { max-width: 800px; margin: 0 auto; background: #2a2a2a; padding: 20px; border-radius: 8px; }
+        input { padding: 10px; width: 70%; border-radius: 4px; border: 1px solid #444; background: #333; color: #fff; }
+        button { padding: 10px 20px; background: #007bff; color: white; border: none; border-radius: 4px; cursor: pointer; }
+        .result { margin-top: 20px; border-top: 1px solid #444; padding-top: 20px; }
+        table { width: 100%; border-collapse: collapse; margin-top: 10px; }
+        td, th { padding: 8px; border: 1px solid #444; text-align: left; }
+        th { background: #333; }
+        img { max-width: 100%; margin-top: 10px; border: 1px solid #444; }
+    </style>
+</head>
+<body>
+    <div class="container">
+        <h1>GE MRI Magnet & Cryo Monitor</h1>
+        <p>Введите IP-адрес веб-интерфейса криокомпрессора:</p>
+        <input type="text" id="ipInput" placeholder="Например: 192.168.1.108">
+        <button onclick="scan()">Сканировать</button>
+
+        <div id="status"></div>
+        
+        <div class="result" id="resultArea" style="display:none;">
+            <h3>Результаты сканирования</h3>
+            <table id="paramsTable">
+                <thead><tr><th>Параметр</th><th>Значение</th></tr></thead>
+                <tbody></tbody>
+            </table>
+            <h4>Скриншот интерфейса:</h4>
+            <img id="screenshot" src="">
+        </div>
+    </div>
+
+    <script>
+        async function scan() {
+            const ip = document.getElementById('ipInput').value;
+            const status = document.getElementById('status');
+            const resultArea = document.getElementById('resultArea');
+            const tbody = document.querySelector('#paramsTable tbody');
+            
+            if(!ip) return alert('Введите IP');
+            
+            status.innerText = 'Сканирование... это может занять до 30 секунд';
+            resultArea.style.display = 'none';
+            tbody.innerHTML = '';
+
+            try {
+                const res = await fetch('/api/scan', {
+                    method: 'POST',
+                    headers: { 'Content-Type': 'application/json' },
+                    body: JSON.stringify({ ip })
+                });
+                const json = await res.json();
+                
+                if(json.success) {
+                    status.innerText = 'Готово!';
+                    resultArea.style.display = 'block';
+                    document.getElementById('screenshot').src = json.screenshot + '?t=' + Date.now();
+                    
+                    if(json.data.parameters.length > 0) {
+                        json.data.parameters.forEach(p => {
+                            const row = `<tr><td>${p.name}</td><td>${p.value}</td></tr>`;
+                            tbody.innerHTML += row;
+                        });
+                    } else {
+                        tbody.innerHTML = '<tr><td colspan="2">Параметры не найдены автоматически. Проверьте скриншот.</td></tr>';
+                    }
+                } else {
+                    status.innerText = 'Ошибка: ' + json.error;
+                }
+            } catch (e) {
+                status.innerText = 'Ошибка соединения';
+            }
+        }
+    </script>
+</body>
+</html>
