@@ -1,0 +1,7 @@
+{
+  "version": 2,
+  "rewrites": [
+    { "source": "/api/scan", "destination": "/api/scan.js" },
+    { "source": "/", "destination": "/index.html" }
+  ]
+}

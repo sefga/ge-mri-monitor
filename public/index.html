@@ -19,8 +19,8 @@
 <body>
     <div class="container">
         <h1>GE MRI Magnet & Cryo Monitor</h1>
-        <p>Введите IP-адрес веб-интерфейса криокомпрессора:</p>
-        <input type="text" id="ipInput" placeholder="Например: 192.168.1.108">
+        <p>Введите IP-адрес веб-интерфейса криокомпрессора (должен быть доступен публично или через VPN):</p>
+        <input type="text" id="ipInput" placeholder="Например: http://192.168.1.108">
         <button onclick="scan()">Сканировать</button>
 
         <div id="status"></div>
@@ -45,7 +45,7 @@
             
             if(!ip) return alert('Введите IP');
             
-            status.innerText = 'Сканирование... это может занять до 30 секунд';
+            status.innerText = 'Сканирование... Ждите (до 10-15 сек)';
             resultArea.style.display = 'none';
             tbody.innerHTML = '';
 
@@ -55,12 +55,13 @@
                     headers: { 'Content-Type': 'application/json' },
                     body: JSON.stringify({ ip })
                 });
+                
                 const json = await res.json();
                 
                 if(json.success) {
                     status.innerText = 'Готово!';
                     resultArea.style.display = 'block';
-                    document.getElementById('screenshot').src = json.screenshot + '?t=' + Date.now();
+                    document.getElementById('screenshot').src = json.screenshot;
                     
                     if(json.data.parameters.length > 0) {
                         json.data.parameters.forEach(p => {
@@ -68,13 +69,14 @@
                             tbody.innerHTML += row;
                         });
                     } else {
-                        tbody.innerHTML = '<tr><td colspan="2">Параметры не найдены автоматически. Проверьте скриншот.</td></tr>';
+                        tbody.innerHTML = '<tr><td colspan="2">Параметры не распознаны автоматически. Проверьте скриншот ниже.</td></tr>';
                     }
                 } else {
-                    status.innerText = 'Ошибка: ' + json.error;
+                    status.innerText = 'Ошибка: ' + (json.error || 'Неизвестная ошибка');
                 }
             } catch (e) {
-                status.innerText = 'Ошибка соединения';
+                console.error(e);
+                status.innerText = 'Ошибка соединения с сервером Vercel';
             }
         }
     </script>
