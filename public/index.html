@@ -5,78 +5,103 @@
     <meta name="viewport" content="width=device-width, initial-scale=1.0">
     <title>GE MRI Magnet Monitor</title>
     <style>
-        body { font-family: sans-serif; background: #1a1a1a; color: #eee; padding: 20px; }
-        .container { max-width: 800px; margin: 0 auto; background: #2a2a2a; padding: 20px; border-radius: 8px; }
-        input { padding: 10px; width: 70%; border-radius: 4px; border: 1px solid #444; background: #333; color: #fff; }
-        button { padding: 10px 20px; background: #007bff; color: white; border: none; border-radius: 4px; cursor: pointer; }
-        .result { margin-top: 20px; border-top: 1px solid #444; padding-top: 20px; }
-        table { width: 100%; border-collapse: collapse; margin-top: 10px; }
-        td, th { padding: 8px; border: 1px solid #444; text-align: left; }
-        th { background: #333; }
-        img { max-width: 100%; margin-top: 10px; border: 1px solid #444; }
+        body { font-family: 'Segoe UI', sans-serif; background: #121212; color: #e0e0e0; padding: 20px; }
+        .container { max-width: 600px; margin: 0 auto; background: #1e1e1e; padding: 25px; border-radius: 12px; box-shadow: 0 4px 20px rgba(0,0,0,0.5); }
+        h1 { text-align: center; color: #bb86fc; font-size: 1.5rem; margin-bottom: 20px; }
+        .input-group { margin-bottom: 15px; }
+        label { display: block; margin-bottom: 5px; font-size: 0.9rem; color: #aaa; }
+        input { width: 100%; padding: 12px; border-radius: 6px; border: 1px solid #333; background: #2c2c2c; color: #fff; box-sizing: border-box; }
+        button { width: 100%; padding: 14px; background: #03dac6; color: #000; font-weight: bold; border: none; border-radius: 6px; cursor: pointer; transition: background 0.2s; }
+        button:hover { background: #018786; }
+        .status { margin-top: 15px; text-align: center; min-height: 20px; color: #ffb74d; }
+        
+        .result-card { margin-top: 25px; border-top: 1px solid #333; padding-top: 15px; }
+        .data-row { display: flex; justify-content: space-between; padding: 8px 0; border-bottom: 1px solid #2c2c2c; }
+        .data-label { color: #aaa; }
+        .data-value { font-weight: bold; color: #fff; }
+        img { width: 100%; margin-top: 20px; border-radius: 8px; border: 1px solid #333; }
+        .settings-toggle { text-align: center; font-size: 0.8rem; margin-top: 10px; cursor: pointer; color: #666; }
+        #advanced { display: none; }
     </style>
 </head>
 <body>
     <div class="container">
-        <h1>GE MRI Magnet & Cryo Monitor</h1>
-        <p>Введите IP-адрес веб-интерфейса криокомпрессора (должен быть доступен публично или через VPN):</p>
-        <input type="text" id="ipInput" placeholder="Например: http://192.168.1.108">
-        <button onclick="scan()">Сканировать</button>
-
-        <div id="status"></div>
+        <h1>GE MRI Monitor</h1>
         
-        <div class="result" id="resultArea" style="display:none;">
-            <h3>Результаты сканирования</h3>
-            <table id="paramsTable">
-                <thead><tr><th>Параметр</th><th>Значение</th></tr></thead>
-                <tbody></tbody>
-            </table>
-            <h4>Скриншот интерфейса:</h4>
-            <img id="screenshot" src="">
+        <div class="input-group">
+            <label>IP Address / Hostname</label>
+            <input type="text" id="ip" value="http://web.amimaging.com" placeholder="192.168.1.108">
+        </div>
+
+        <div class="settings-toggle" onclick="document.getElementById('advanced').style.display = 'block'; this.style.display='none'">
+            Show Credentials Settings
+        </div>
+
+        <div id="advanced">
+            <div class="input-group">
+                <label>Username</label>
+                <input type="text" id="user" value="MMService">
+            </div>
+            <div class="input-group">
+                <label>Password</label>
+                <input type="password" id="pass" value="MagnetMonitor">
+            </div>
+        </div>
+
+        <button onclick="scan()">CONNECT & SCAN</button>
+        <div id="status" class="status"></div>
+
+        <div id="result" class="result-card" style="display:none">
+            <div id="metrics"></div>
+            <img id="screen" src="">
         </div>
     </div>
 
     <script>
         async function scan() {
-            const ip = document.getElementById('ipInput').value;
+            const ip = document.getElementById('ip').value;
+            const user = document.getElementById('user').value;
+            const pass = document.getElementById('pass').value;
             const status = document.getElementById('status');
-            const resultArea = document.getElementById('resultArea');
-            const tbody = document.querySelector('#paramsTable tbody');
+            const result = document.getElementById('result');
+            const metrics = document.getElementById('metrics');
             
-            if(!ip) return alert('Введите IP');
-            
-            status.innerText = 'Сканирование... Ждите (до 10-15 сек)';
-            resultArea.style.display = 'none';
-            tbody.innerHTML = '';
+            if(!ip) return;
+
+            status.innerText = 'Connecting to device... (approx 15s)';
+            result.style.display = 'none';
+            metrics.innerHTML = '';
 
             try {
                 const res = await fetch('/api/scan', {
                     method: 'POST',
                     headers: { 'Content-Type': 'application/json' },
-                    body: JSON.stringify({ ip })
+                    body: JSON.stringify({ ip, username: user, password: pass })
                 });
                 
                 const json = await res.json();
                 
                 if(json.success) {
-                    status.innerText = 'Готово!';
-                    resultArea.style.display = 'block';
-                    document.getElementById('screenshot').src = json.screenshot;
+                    status.innerText = 'Connected';
+                    result.style.display = 'block';
+                    document.getElementById('screen').src = json.screenshot;
                     
-                    if(json.data.parameters.length > 0) {
-                        json.data.parameters.forEach(p => {
-                            const row = `<tr><td>${p.name}</td><td>${p.value}</td></tr>`;
-                            tbody.innerHTML += row;
-                        });
+                    if(json.data.parameters.length === 0) {
+                        metrics.innerHTML = '<div class="data-row" style="justify-content:center">No data parsed. Check screenshot.</div>';
                     } else {
-                        tbody.innerHTML = '<tr><td colspan="2">Параметры не распознаны автоматически. Проверьте скриншот ниже.</td></tr>';
+                        json.data.parameters.forEach(p => {
+                            metrics.innerHTML += `
+                                <div class="data-row">
+                                    <span class="data-label">${p.name}</span>
+                                    <span class="data-value">${p.value}</span>
+                                </div>`;
+                        });
                     }
                 } else {
-                    status.innerText = 'Ошибка: ' + (json.error || 'Неизвестная ошибка');
+                    status.innerText = 'Error: ' + json.error;
                 }
             } catch (e) {
-                console.error(e);
-                status.innerText = 'Ошибка соединения с сервером Vercel';
+                status.innerText = 'Network Error';
             }
         }
     </script>
